@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { getNow } from "./time";
+import { getNow, toET } from "./time";
 import { CANCEL_WINDOW_HOURS, LATE_CANCEL_FEE } from "../config";
 import { randomUUID } from "crypto";
 
@@ -117,7 +117,7 @@ export async function checkSchedule(
       id: c.id,
       class_type: c.class_type,
       instructor: c.instructor,
-      starts_at: c.starts_at,
+      starts_at: toET(c.starts_at),
       capacity: c.capacity,
       booked_count: booked,
       spots_available: c.capacity - booked,
@@ -213,10 +213,11 @@ export async function bookClass(
 
   // All validations pass — create pending action instead of writing
   const actionId = randomUUID();
+  const startsET = toET(cls.starts_at);
   const preview = {
     class_type: cls.class_type,
     instructor: cls.instructor,
-    starts_at: cls.starts_at,
+    starts_at: startsET,
   };
   pendingActions.set(actionId, {
     id: actionId,
@@ -225,7 +226,7 @@ export async function bookClass(
     preview,
   });
 
-  const summary = `Book ${cls.class_type} with ${cls.instructor} at ${cls.starts_at}`;
+  const summary = `Book ${cls.class_type} with ${cls.instructor} at ${startsET}`;
   const result = success({
     pending_action_id: actionId,
     summary,
@@ -302,12 +303,13 @@ export async function cancelClass(
 
   // Create pending action instead of writing
   const actionId = randomUUID();
+  const startsET = toET(cls.starts_at);
   const preview = {
     new_status: newStatus,
     fee_charged: fee,
     hours_before_class: Math.round(hoursUntilClass * 100) / 100,
     class_type: cls.class_type,
-    starts_at: cls.starts_at,
+    starts_at: startsET,
   };
   pendingActions.set(actionId, {
     id: actionId,
@@ -317,7 +319,7 @@ export async function cancelClass(
   });
 
   const feeNote = fee > 0 ? ` A $${fee} late-cancellation fee will apply.` : "";
-  const summary = `Cancel ${cls.class_type} at ${cls.starts_at}.${feeNote}`;
+  const summary = `Cancel ${cls.class_type} at ${startsET}.${feeNote}`;
   const result = success({
     pending_action_id: actionId,
     summary,

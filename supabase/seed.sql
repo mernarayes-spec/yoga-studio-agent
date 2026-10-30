@@ -31,14 +31,14 @@ ON CONFLICT (id) DO UPDATE SET
 
 INSERT INTO classes (id, class_type, instructor, starts_at, capacity)
 SELECT
-  -- deterministic uuid: encode day offset and slot into the uuid
-  ('c0000000-0000-0000-0000-' || lpad(((d.day_offset * 3) + s.slot)::text, 12, '0'))::uuid,
+  -- deterministic uuid: encode day offset and slot into the uuid (offset by 15 so always positive)
+  ('c0000000-0000-0000-0000-' || lpad((((d.day_offset + 5) * 3) + s.slot)::text, 12, '0'))::uuid,
   (ARRAY['Yoga Sculpt', 'Yoga Strength', 'Hot Traditional Yoga'])[s.slot + 1],
-  (ARRAY['Maya', 'Jordan', 'Suki', 'Leo'])[1 + ((d.day_offset * 3 + s.slot) % 4)],
+  (ARRAY['Maya', 'Jordan', 'Suki', 'Leo'])[1 + (((d.day_offset + 5) * 3 + s.slot) % 4)],
   -- Start from beginning of today (ET = America/New_York), add days + hours
-  date_trunc('day', now() AT TIME ZONE 'America/New_York')
+  (date_trunc('day', now() AT TIME ZONE 'America/New_York')
     + (d.day_offset || ' days')::interval
-    + (s.hour || ' hours')::interval
+    + (s.hour || ' hours')::interval)
     AT TIME ZONE 'America/New_York',
   20 -- default capacity
 FROM
@@ -54,28 +54,28 @@ ON CONFLICT (id) DO UPDATE SET
 UPDATE classes
 SET capacity = 1
 WHERE id = (
-  -- pick the class for day_offset=1, slot=0 → index = 1*3+0 = 3
-  'c0000000-0000-0000-0000-000000000003'::uuid
+  -- pick the class for day_offset=1, slot=0 → index = (1+5)*3+0 = 18
+  'c0000000-0000-0000-0000-000000000018'::uuid
 );
 
 -- ============================================================
 -- Bookings
 -- ============================================================
 
--- Alice: 2 bookings for classes 2+ days out (day_offset=3 slots 0,1 → indices 9,10)
+-- Alice: 3 bookings for classes 2+ days out (day_offset=3 slots 0,1,2 → indices 24,25,26)
 INSERT INTO bookings (id, member_id, class_id, status)
 VALUES
   ('b0000000-0000-0000-0000-000000000001',
    'a0000000-0000-0000-0000-000000000001',
-   'c0000000-0000-0000-0000-000000000009',
+   'c0000000-0000-0000-0000-000000000024',
    'booked'),
   ('b0000000-0000-0000-0000-000000000002',
    'a0000000-0000-0000-0000-000000000001',
-   'c0000000-0000-0000-0000-000000000010',
+   'c0000000-0000-0000-0000-000000000025',
    'booked'),
   ('b0000000-0000-0000-0000-000000000003',
    'a0000000-0000-0000-0000-000000000001',
-   'c0000000-0000-0000-0000-000000000011',
+   'c0000000-0000-0000-0000-000000000026',
    'booked')
 ON CONFLICT (id) DO UPDATE SET
   member_id = EXCLUDED.member_id,
@@ -160,7 +160,7 @@ INSERT INTO bookings (id, member_id, class_id, status)
 VALUES (
   'b0000000-0000-0000-0000-000000000007',
   'a0000000-0000-0000-0000-000000000001',
-  'c0000000-0000-0000-0000-000000000003',
+  'c0000000-0000-0000-0000-000000000018',
   'booked'
 )
 ON CONFLICT (id) DO UPDATE SET

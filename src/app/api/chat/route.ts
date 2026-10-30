@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
       );
 
       const response = await anthropic.messages.create({
-        model: "claude-haiku-4-20250414",
+        model: "claude-haiku-5-5",
         max_tokens: 1024,
         system: systemPrompt,
         tools: agentTools as Anthropic.Tool[],
