@@ -10,6 +10,7 @@
     "db:reset": "npx tsx scripts/reset.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
     "@supabase/supabase-js": "^2.118.0",
     "dotenv": "^18.0.9",
     "next": "16.4.3",

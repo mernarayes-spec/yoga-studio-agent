@@ -1,5 +1,8 @@
 /** Claude API tool definitions for the agent.
- *  Format: Anthropic tool-use schema (no SDK dependency). */
+ *  Format: Anthropic tool-use schema (no SDK dependency).
+ *
+ *  member_id is omitted from schemas — injected server-side so
+ *  the model never chooses or hallucinates it. */
 
 export interface ToolSchema {
   name: string;
@@ -39,39 +42,46 @@ export const agentTools: ToolSchema[] = [
   {
     name: "book_class",
     description:
-      "Book a class for a member. The member must have an active membership and the class must have available spots.",
+      "Prepare a class booking for the current member. Returns a preview with a pending_action_id. The booking is NOT confirmed yet — present the details to the member and call confirm_action after they agree.",
     input_schema: {
       type: "object",
       properties: {
-        member_id: {
-          type: "string",
-          description: "UUID of the member.",
-        },
         class_id: {
           type: "string",
           description: "UUID of the class to book.",
         },
       },
-      required: ["member_id", "class_id"],
+      required: ["class_id"],
     },
   },
   {
     name: "cancel_class",
     description:
-      "Cancel an existing booking. Cancelling within 10 hours of class start incurs a $15 late-cancellation fee.",
+      "Prepare a cancellation for the current member's booking. Returns a preview (including any late-cancel fee) with a pending_action_id. The cancellation is NOT confirmed yet — present the details to the member and call confirm_action after they agree.",
     input_schema: {
       type: "object",
       properties: {
-        member_id: {
-          type: "string",
-          description: "UUID of the member.",
-        },
         booking_id: {
           type: "string",
           description: "UUID of the booking to cancel.",
         },
       },
-      required: ["member_id", "booking_id"],
+      required: ["booking_id"],
+    },
+  },
+  {
+    name: "confirm_action",
+    description:
+      "Execute a previously previewed action (book or cancel) after the member has confirmed. Pass the pending_action_id returned by book_class or cancel_class.",
+    input_schema: {
+      type: "object",
+      properties: {
+        pending_action_id: {
+          type: "string",
+          description: "The pending_action_id from the preview step.",
+        },
+      },
+      required: ["pending_action_id"],
     },
   },
 ];

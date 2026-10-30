@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import { getNow } from "./time";
 import { CANCEL_WINDOW_HOURS, LATE_CANCEL_FEE } from "../config";
+import { randomUUID } from "crypto";
 
 // --- Result types ---
 
@@ -22,6 +23,22 @@ function logTool(tool: string, phase: "entry" | "exit", detail: unknown) {
   console.log(
     JSON.stringify({ ts: new Date().toISOString(), tool, phase, detail })
   );
+}
+
+// --- Pending actions ---
+
+export interface PendingAction {
+  id: string;
+  action: "book_class" | "cancel_class";
+  params: Record<string, unknown>;
+  preview: Record<string, unknown>;
+}
+
+/** In-memory store scoped to a single request's tool-loop. */
+const pendingActions = new Map<string, PendingAction>();
+
+export function clearPendingActions() {
+  pendingActions.clear();
 }
 
 // --- check_schedule ---
@@ -111,23 +128,16 @@ export async function checkSchedule(
   return success(rows);
 }
 
-// --- book_class ---
+// --- book_class (preview only — creates a pending action) ---
 
 interface BookParams {
   member_id: string;
   class_id: string;
 }
 
-interface BookResult {
-  booking_id: string;
-  class_type: string;
-  instructor: string;
-  starts_at: string;
-}
-
 export async function bookClass(
   params: BookParams
-): Promise<ToolResult<BookResult>> {
+): Promise<ToolResult<{ pending_action_id: string; summary: string; class_type: string; instructor: string; starts_at: string }>> {
   logTool("book_class", "entry", params);
 
   // Validate member
@@ -201,56 +211,40 @@ export async function bookClass(
     return result;
   }
 
-  // Insert
-  const { data: booking, error: insertErr } = await supabase
-    .from("bookings")
-    .insert({
-      member_id: params.member_id,
-      class_id: params.class_id,
-      status: "booked",
-      fee_charged: 0,
-      credit_lost: false,
-      booked_at: getNow().toISOString(),
-      cancelled_at: null,
-    })
-    .select()
-    .single();
-
-  if (insertErr || !booking) {
-    const result = fail(`Failed to create booking: ${insertErr?.message}`);
-    logTool("book_class", "exit", result);
-    return result;
-  }
-
-  const result = success<BookResult>({
-    booking_id: booking.id,
+  // All validations pass — create pending action instead of writing
+  const actionId = randomUUID();
+  const preview = {
     class_type: cls.class_type,
     instructor: cls.instructor,
     starts_at: cls.starts_at,
+  };
+  pendingActions.set(actionId, {
+    id: actionId,
+    action: "book_class",
+    params: { member_id: params.member_id, class_id: params.class_id },
+    preview,
+  });
+
+  const summary = `Book ${cls.class_type} with ${cls.instructor} at ${cls.starts_at}`;
+  const result = success({
+    pending_action_id: actionId,
+    summary,
+    ...preview,
   });
   logTool("book_class", "exit", result);
   return result;
 }
 
-// --- cancel_class ---
+// --- cancel_class (preview only — creates a pending action) ---
 
 interface CancelParams {
   member_id: string;
   booking_id: string;
 }
 
-interface CancelResult {
-  booking_id: string;
-  new_status: "cancelled" | "late_cancelled";
-  fee_charged: number;
-  hours_before_class: number;
-  class_type: string;
-  starts_at: string;
-}
-
 export async function cancelClass(
   params: CancelParams
-): Promise<ToolResult<CancelResult>> {
+): Promise<ToolResult<{ pending_action_id: string; summary: string; fee_charged: number; hours_before_class: number; class_type: string; starts_at: string }>> {
   logTool("cancel_class", "entry", params);
 
   // Validate booking
@@ -303,27 +297,30 @@ export async function cancelClass(
   const msUntilClass = classStart.getTime() - now.getTime();
   const hoursUntilClass = msUntilClass / (1000 * 60 * 60);
   const isLate = hoursUntilClass < CANCEL_WINDOW_HOURS;
-  const newStatus = isLate ? "late_cancelled" : "cancelled";
   const fee = isLate ? LATE_CANCEL_FEE : 0;
+  const newStatus = isLate ? "late_cancelled" : "cancelled";
 
-  const { error: updateErr } = await supabase
-    .from("bookings")
-    .update({
-      status: newStatus,
-      fee_charged: fee,
-      cancelled_at: now.toISOString(),
-    })
-    .eq("id", params.booking_id);
-
-  if (updateErr) {
-    const result = fail(`Failed to update booking: ${updateErr.message}`);
-    logTool("cancel_class", "exit", result);
-    return result;
-  }
-
-  const result = success<CancelResult>({
-    booking_id: params.booking_id,
+  // Create pending action instead of writing
+  const actionId = randomUUID();
+  const preview = {
     new_status: newStatus,
+    fee_charged: fee,
+    hours_before_class: Math.round(hoursUntilClass * 100) / 100,
+    class_type: cls.class_type,
+    starts_at: cls.starts_at,
+  };
+  pendingActions.set(actionId, {
+    id: actionId,
+    action: "cancel_class",
+    params: { member_id: params.member_id, booking_id: params.booking_id },
+    preview,
+  });
+
+  const feeNote = fee > 0 ? ` A $${fee} late-cancellation fee will apply.` : "";
+  const summary = `Cancel ${cls.class_type} at ${cls.starts_at}.${feeNote}`;
+  const result = success({
+    pending_action_id: actionId,
+    summary,
     fee_charged: fee,
     hours_before_class: Math.round(hoursUntilClass * 100) / 100,
     class_type: cls.class_type,
@@ -333,7 +330,96 @@ export async function cancelClass(
   return result;
 }
 
+// --- confirm_action (executes a pending action) ---
+
+interface ConfirmParams {
+  pending_action_id: string;
+}
+
+export async function confirmAction(
+  params: ConfirmParams
+): Promise<ToolResult<unknown>> {
+  logTool("confirm_action", "entry", params);
+
+  const action = pendingActions.get(params.pending_action_id);
+  if (!action) {
+    const result = fail("No pending action found with that ID. It may have expired or already been confirmed.");
+    logTool("confirm_action", "exit", result);
+    return result;
+  }
+
+  pendingActions.delete(params.pending_action_id);
+
+  if (action.action === "book_class") {
+    const p = action.params as { member_id: string; class_id: string };
+    const { data: booking, error: insertErr } = await supabase
+      .from("bookings")
+      .insert({
+        member_id: p.member_id,
+        class_id: p.class_id,
+        status: "booked",
+        fee_charged: 0,
+        credit_lost: false,
+        booked_at: getNow().toISOString(),
+        cancelled_at: null,
+      })
+      .select()
+      .single();
+
+    if (insertErr || !booking) {
+      const result = fail(`Failed to create booking: ${insertErr?.message}`);
+      logTool("confirm_action", "exit", result);
+      return result;
+    }
+
+    const result = success({
+      confirmed: true,
+      booking_id: booking.id,
+      ...action.preview,
+    });
+    logTool("confirm_action", "exit", result);
+    return result;
+  }
+
+  if (action.action === "cancel_class") {
+    const p = action.params as { member_id: string; booking_id: string };
+    const preview = action.preview as { new_status: "cancelled" | "late_cancelled"; fee_charged: number };
+    const { error: updateErr } = await supabase
+      .from("bookings")
+      .update({
+        status: preview.new_status,
+        fee_charged: preview.fee_charged,
+        cancelled_at: getNow().toISOString(),
+      })
+      .eq("id", p.booking_id);
+
+    if (updateErr) {
+      const result = fail(`Failed to cancel booking: ${updateErr.message}`);
+      logTool("confirm_action", "exit", result);
+      return result;
+    }
+
+    const result = success({
+      confirmed: true,
+      booking_id: p.booking_id,
+      ...action.preview,
+    });
+    logTool("confirm_action", "exit", result);
+    return result;
+  }
+
+  const result = fail(`Unknown action type: ${action.action}`);
+  logTool("confirm_action", "exit", result);
+  return result;
+}
+
 // --- Dispatcher ---
+
+const WRITE_TOOLS = new Set(["book_class", "cancel_class", "confirm_action"]);
+
+export function isWriteTool(name: string): boolean {
+  return WRITE_TOOLS.has(name);
+}
 
 export async function dispatchTool(
   name: string,
@@ -346,6 +432,8 @@ export async function dispatchTool(
       return bookClass(input as unknown as BookParams);
     case "cancel_class":
       return cancelClass(input as unknown as CancelParams);
+    case "confirm_action":
+      return confirmAction(input as unknown as ConfirmParams);
     default:
       return fail(`Unknown tool: ${name}`);
   }
