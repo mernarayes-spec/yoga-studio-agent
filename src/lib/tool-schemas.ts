@@ -70,6 +70,24 @@ export const agentTools: ToolSchema[] = [
     },
   },
   {
+    name: "lookup_bookings",
+    description:
+      "Look up the current member's active bookings. Returns a list of upcoming booked classes with booking IDs, class details, and times.",
+    input_schema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "lookup_membership",
+    description:
+      "Look up the current member's membership status, including start date, freeze info, and freezes used.",
+    input_schema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
     name: "confirm_action",
     description:
       "Execute a previously previewed action (book or cancel) after the member has confirmed. Pass the pending_action_id returned by book_class or cancel_class.",

@@ -332,6 +332,102 @@ export async function cancelClass(
   return result;
 }
 
+// --- lookup_bookings ---
+
+interface LookupBookingsParams {
+  member_id: string;
+}
+
+export async function lookupBookings(
+  params: LookupBookingsParams
+): Promise<ToolResult<unknown>> {
+  logTool("lookup_bookings", "entry", params);
+
+  const { data: bookings, error: bookingErr } = await supabase
+    .from("bookings")
+    .select("id, class_id, status, booked_at, fee_charged")
+    .eq("member_id", params.member_id)
+    .eq("status", "booked");
+
+  if (bookingErr) {
+    const result = fail(`DB error fetching bookings: ${bookingErr.message}`);
+    logTool("lookup_bookings", "exit", result);
+    return result;
+  }
+
+  if (!bookings || bookings.length === 0) {
+    const result = success({ bookings: [] });
+    logTool("lookup_bookings", "exit", { count: 0 });
+    return result;
+  }
+
+  // Fetch class details for each booking
+  const classIds = bookings.map((b) => b.class_id);
+  const { data: classes, error: classErr } = await supabase
+    .from("classes")
+    .select("id, class_type, instructor, starts_at")
+    .in("id", classIds);
+
+  if (classErr) {
+    const result = fail(`DB error fetching classes: ${classErr.message}`);
+    logTool("lookup_bookings", "exit", result);
+    return result;
+  }
+
+  const classMap = new Map(classes?.map((c) => [c.id, c]) ?? []);
+
+  const rows = bookings.map((b) => {
+    const cls = classMap.get(b.class_id);
+    return {
+      booking_id: b.id,
+      class_id: b.class_id,
+      class_type: cls?.class_type ?? "Unknown",
+      instructor: cls?.instructor ?? "Unknown",
+      starts_at: cls ? toET(cls.starts_at) : "Unknown",
+      booked_at: b.booked_at,
+    };
+  });
+
+  const result = success({ bookings: rows });
+  logTool("lookup_bookings", "exit", { count: rows.length });
+  return result;
+}
+
+// --- lookup_membership ---
+
+interface LookupMembershipParams {
+  member_id: string;
+}
+
+export async function lookupMembership(
+  params: LookupMembershipParams
+): Promise<ToolResult<unknown>> {
+  logTool("lookup_membership", "entry", params);
+
+  const { data: member, error: memberErr } = await supabase
+    .from("members")
+    .select("*")
+    .eq("id", params.member_id)
+    .single();
+
+  if (memberErr || !member) {
+    const result = fail("Member not found.");
+    logTool("lookup_membership", "exit", result);
+    return result;
+  }
+
+  const result = success({
+    name: member.name,
+    membership_status: member.membership_status,
+    membership_start_date: member.membership_start_date,
+    freeze_start_date: member.freeze_start_date,
+    freeze_end_date: member.freeze_end_date,
+    freezes_used: member.freezes_used,
+  });
+  logTool("lookup_membership", "exit", result);
+  return result;
+}
+
 // --- confirm_action (executes a pending action) ---
 
 interface ConfirmParams {
@@ -434,6 +530,10 @@ export async function dispatchTool(
       return bookClass(input as unknown as BookParams);
     case "cancel_class":
       return cancelClass(input as unknown as CancelParams);
+    case "lookup_bookings":
+      return lookupBookings(input as unknown as LookupBookingsParams);
+    case "lookup_membership":
+      return lookupMembership(input as unknown as LookupMembershipParams);
     case "confirm_action":
       return confirmAction(input as unknown as ConfirmParams);
     default:

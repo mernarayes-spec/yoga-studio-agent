@@ -9,7 +9,7 @@ const anthropic = new Anthropic(); // reads ANTHROPIC_API_KEY from env
 const MAX_TOOL_ROUNDS = 6;
 
 /** Tools that take a member_id parameter (injected server-side). */
-const MEMBER_ID_TOOLS = new Set(["book_class", "cancel_class"]);
+const MEMBER_ID_TOOLS = new Set(["book_class", "cancel_class", "lookup_bookings", "lookup_membership"]);
 
 interface ChatRequest {
   member_id: string;
