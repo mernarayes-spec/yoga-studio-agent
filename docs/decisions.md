@@ -12,3 +12,4 @@
 | 8 | Tool result type? | `{ ok, data } \| { ok, error }` discriminated union — tools never throw. | Model always gets parseable response; no crash paths. |
 | 9 | How to count availability? | Count booked bookings in JS after fetching, not a DB view. | Simpler; fine for demo scale. |
 | 10 | Where does cancel-fee logic live? | Solely in `cancelClass`. `reschedule_class` will compose cancel + book. | Single source of truth for fee calculation. |
+| 11 | How to persist conversations? | Two-table approach: `conversations` stores full `api_messages` JSONB for continuation, `conversation_messages` stores individual display messages for review/analytics. Status tracks open/resolved/escalated with resolution_type for what was achieved. | Slight data duplication (messages stored twice); avoids expensive message reconstruction for API continuation and enables simple analytics queries on individual messages. |

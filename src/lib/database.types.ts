@@ -1,5 +1,7 @@
 export type MembershipStatus = "active" | "frozen" | "none";
 export type BookingStatus = "booked" | "cancelled" | "late_cancelled" | "no_show";
+export type ConversationStatus = "open" | "resolved" | "escalated";
+export type ResolutionType = "booked" | "cancelled" | "rescheduled" | "answered";
 
 export type Member = {
   id: string;
@@ -34,6 +36,26 @@ export type Booking = {
   created_at: string;
 };
 
+export type Conversation = {
+  id: string;
+  member_id: string;
+  status: ConversationStatus;
+  resolution_type: ResolutionType | null;
+  summary: string | null;
+  api_messages: unknown[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type ConversationMessage = {
+  id: string;
+  conversation_id: string;
+  role: "user" | "assistant";
+  display_text: string;
+  tool_names: string[] | null;
+  created_at: string;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -62,6 +84,25 @@ export type Database = {
           created_at?: string;
         };
         Update: Partial<Omit<Booking, "id">>;
+        Relationships: [];
+      };
+      conversations: {
+        Row: Conversation;
+        Insert: Omit<Conversation, "id" | "created_at" | "updated_at"> & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<Conversation, "id">>;
+        Relationships: [];
+      };
+      conversation_messages: {
+        Row: ConversationMessage;
+        Insert: Omit<ConversationMessage, "id" | "created_at"> & {
+          id?: string;
+          created_at?: string;
+        };
+        Update: Partial<Omit<ConversationMessage, "id">>;
         Relationships: [];
       };
     };
