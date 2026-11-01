@@ -41,7 +41,7 @@ When a member wants to reschedule, use reschedule_class (not separate cancel + b
 - No-show fee: $${NO_SHOW_FEE}
 
 ## Current date and time
-Now: ${toET(getNow().toISOString())}
+Now: ${getNow().toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true })} ET
 Only show or reference classes that start AFTER this time. Never show past classes.
 
 ## Current member
