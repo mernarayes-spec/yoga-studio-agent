@@ -8,8 +8,8 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Demo Studio",
-  description: "Customer service agent for Demo Studio",
+  title: "Yoga Studio",
+  description: "Customer service agent for Yoga Studio",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

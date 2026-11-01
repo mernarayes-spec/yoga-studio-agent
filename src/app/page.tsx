@@ -36,24 +36,25 @@ const STATUS_LABELS: Record<string, string> = {
 
 const STORAGE_KEY = "yoga-studio-member-index";
 
-function getInitialMemberIndex(): number {
-  if (typeof window === "undefined") return 0;
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored !== null) {
-    const idx = parseInt(stored, 10);
-    if (idx >= 0 && idx < DEMO_MEMBERS.length) return idx;
-  }
-  return 0;
-}
-
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [apiMessages, setApiMessages] = useState<unknown[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedMemberIndex, setSelectedMemberIndex] = useState(getInitialMemberIndex);
+  const [selectedMemberIndex, setSelectedMemberIndex] = useState(0);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isRestoring, setIsRestoring] = useState(true);
+
+  // Restore selected member from localStorage after mount (avoids hydration mismatch)
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored !== null) {
+      const idx = parseInt(stored, 10);
+      if (idx >= 0 && idx < DEMO_MEMBERS.length) {
+        setSelectedMemberIndex(idx);
+      }
+    }
+  }, []);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const member = DEMO_MEMBERS[selectedMemberIndex];
