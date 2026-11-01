@@ -1,6 +1,7 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 import { CANCEL_WINDOW_HOURS, LATE_CANCEL_FEE, NO_SHOW_FEE, MEMBERSHIP_PRICE_MONTHLY } from "../config";
+import { getNow, toET } from "./time";
 
 const policy = readFileSync(join(process.cwd(), "docs/policy.md"), "utf-8");
 
@@ -38,6 +39,10 @@ When a member wants to reschedule, use reschedule_class (not separate cancel + b
 - Cancellation window: ${CANCEL_WINDOW_HOURS} hours before class
 - Late cancellation fee: $${LATE_CANCEL_FEE}
 - No-show fee: $${NO_SHOW_FEE}
+
+## Current date and time
+Now: ${toET(getNow().toISOString())}
+Only show or reference classes that start AFTER this time. Never show past classes.
 
 ## Current member
 You are helping: ${memberName}
