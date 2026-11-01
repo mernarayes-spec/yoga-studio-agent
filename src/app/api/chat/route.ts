@@ -29,7 +29,21 @@ export async function POST(req: NextRequest) {
   }
 
   const systemPrompt = buildSystemPrompt(member_name);
-  let currentMessages: Anthropic.MessageParam[] = [...messages];
+
+  // Strip thinking blocks from conversation history sent by the client.
+  // The system prompt includes a dynamic timestamp, so thinking blocks
+  // signed against a previous prompt would be rejected by the API.
+  const sanitizedMessages: Anthropic.MessageParam[] = messages.map((msg) => {
+    if (msg.role === "assistant" && Array.isArray(msg.content)) {
+      const filtered = msg.content.filter(
+        (block) => (block as { type: string }).type !== "thinking"
+      );
+      return { ...msg, content: filtered };
+    }
+    return msg;
+  });
+
+  let currentMessages: Anthropic.MessageParam[] = [...sanitizedMessages];
   let rounds = 0;
 
   try {
