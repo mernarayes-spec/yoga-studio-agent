@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 import { agentTools } from "@/lib/tool-schemas";
-import { dispatchTool, clearPendingActions } from "@/lib/tools";
+import { dispatchTool } from "@/lib/tools";
 import { buildSystemPrompt } from "@/lib/system-prompt";
 
 const anthropic = new Anthropic(); // reads ANTHROPIC_API_KEY from env
@@ -27,9 +27,6 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
-
-  // Fresh pending-action store for this request
-  clearPendingActions();
 
   const systemPrompt = buildSystemPrompt(member_name);
   let currentMessages: Anthropic.MessageParam[] = [...messages];
