@@ -1,6 +1,9 @@
 /**
  * Reset script: wipes all data and re-seeds the database.
  * Usage: npx tsx scripts/reset.ts
+ *
+ * Note: migrations (DDL) must be run manually via the Supabase SQL Editor
+ * since the REST API only supports data operations, not schema changes.
  */
 
 import { config } from "dotenv";
@@ -22,9 +25,9 @@ if (!supabaseUrl || !supabaseKey) {
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function runSql(sql: string, label: string) {
+  // Try exec_sql RPC (available if the function has been created)
   const { error } = await supabase.rpc("exec_sql", { sql });
   if (error) {
-    // Fallback: try via the REST SQL endpoint if exec_sql rpc doesn't exist
     throw new Error(`${label} failed: ${error.message}`);
   }
   console.log(`  ✓ ${label}`);
@@ -33,8 +36,10 @@ async function runSql(sql: string, label: string) {
 async function main() {
   console.log("Resetting database...\n");
 
-  // Delete in FK order: bookings → classes → members
+  // Delete in FK order: conversation_messages → conversations → bookings → classes → members
   const deletions = [
+    { table: "conversation_messages" as const, label: "Deleted conversation_messages" },
+    { table: "conversations" as const, label: "Deleted conversations" },
     { table: "bookings" as const, label: "Deleted bookings" },
     { table: "classes" as const, label: "Deleted classes" },
     { table: "members" as const, label: "Deleted members" },
@@ -55,8 +60,6 @@ async function main() {
 
   console.log("\nSeeding database...\n");
 
-  // Split on semicolons to execute statements individually via rpc,
-  // or try the whole file at once
   try {
     await runSql(seedSql, "Executed seed.sql");
   } catch {
