@@ -29,7 +29,7 @@ function logTool(tool: string, phase: "entry" | "exit", detail: unknown) {
 
 export interface PendingAction {
   id: string;
-  action: "book_class" | "cancel_class";
+  action: "book_class" | "cancel_class" | "reschedule_class";
   params: Record<string, unknown>;
   preview: Record<string, unknown>;
 }
@@ -332,6 +332,168 @@ export async function cancelClass(
   return result;
 }
 
+// --- reschedule_class (preview only — creates a pending action) ---
+
+interface RescheduleParams {
+  member_id: string;
+  booking_id: string;
+  new_class_id: string;
+}
+
+export async function rescheduleClass(
+  params: RescheduleParams
+): Promise<ToolResult<unknown>> {
+  logTool("reschedule_class", "entry", params);
+
+  // Validate existing booking
+  const { data: booking, error: bookingErr } = await supabase
+    .from("bookings")
+    .select("*")
+    .eq("id", params.booking_id)
+    .single();
+
+  if (bookingErr || !booking) {
+    const result = fail("Booking not found.");
+    logTool("reschedule_class", "exit", result);
+    return result;
+  }
+  if (booking.member_id !== params.member_id) {
+    const result = fail("Booking does not belong to this member.");
+    logTool("reschedule_class", "exit", result);
+    return result;
+  }
+  if (booking.status !== "booked") {
+    const result = fail(
+      `Booking is already "${booking.status}" — can only reschedule active bookings.`
+    );
+    logTool("reschedule_class", "exit", result);
+    return result;
+  }
+
+  // Get old class info
+  const { data: oldCls, error: oldClsErr } = await supabase
+    .from("classes")
+    .select("*")
+    .eq("id", booking.class_id)
+    .single();
+
+  if (oldClsErr || !oldCls) {
+    const result = fail("Associated class not found.");
+    logTool("reschedule_class", "exit", result);
+    return result;
+  }
+
+  const now = getNow();
+  const oldClassStart = new Date(oldCls.starts_at);
+
+  if (oldClassStart <= now) {
+    const result = fail("Cannot reschedule — original class has already started.");
+    logTool("reschedule_class", "exit", result);
+    return result;
+  }
+
+  // Late-cancel fee calculation (same logic as cancel_class)
+  const msUntilClass = oldClassStart.getTime() - now.getTime();
+  const hoursUntilClass = msUntilClass / (1000 * 60 * 60);
+  const isLate = hoursUntilClass < CANCEL_WINDOW_HOURS;
+  const fee = isLate ? LATE_CANCEL_FEE : 0;
+  const cancelStatus = isLate ? "late_cancelled" : "cancelled";
+
+  // Validate new class
+  const { data: newCls, error: newClsErr } = await supabase
+    .from("classes")
+    .select("*")
+    .eq("id", params.new_class_id)
+    .single();
+
+  if (newClsErr || !newCls) {
+    const result = fail("New class not found.");
+    logTool("reschedule_class", "exit", result);
+    return result;
+  }
+  if (new Date(newCls.starts_at) <= now) {
+    const result = fail("Cannot book a class that has already started.");
+    logTool("reschedule_class", "exit", result);
+    return result;
+  }
+
+  // Check spots on new class
+  const { count, error: countErr } = await supabase
+    .from("bookings")
+    .select("*", { count: "exact", head: true })
+    .eq("class_id", params.new_class_id)
+    .eq("status", "booked");
+
+  if (countErr) {
+    const result = fail(`DB error counting bookings: ${countErr.message}`);
+    logTool("reschedule_class", "exit", result);
+    return result;
+  }
+  if ((count ?? 0) >= newCls.capacity) {
+    const result = fail("New class is full — no spots available.");
+    logTool("reschedule_class", "exit", result);
+    return result;
+  }
+
+  // Check member isn't already booked in the new class
+  const { data: existing } = await supabase
+    .from("bookings")
+    .select("id")
+    .eq("member_id", params.member_id)
+    .eq("class_id", params.new_class_id)
+    .eq("status", "booked")
+    .maybeSingle();
+
+  if (existing) {
+    const result = fail("Member already has an active booking for the new class.");
+    logTool("reschedule_class", "exit", result);
+    return result;
+  }
+
+  // All validations pass — create pending action
+  const actionId = randomUUID();
+  const oldStartsET = toET(oldCls.starts_at);
+  const newStartsET = toET(newCls.starts_at);
+  const preview = {
+    old_class: {
+      class_type: oldCls.class_type,
+      instructor: oldCls.instructor,
+      starts_at: oldStartsET,
+    },
+    new_class: {
+      class_type: newCls.class_type,
+      instructor: newCls.instructor,
+      starts_at: newStartsET,
+    },
+    cancel_status: cancelStatus,
+    fee_charged: fee,
+    hours_before_class: Math.round(hoursUntilClass * 100) / 100,
+  };
+
+  pendingActions.set(actionId, {
+    id: actionId,
+    action: "reschedule_class",
+    params: {
+      member_id: params.member_id,
+      booking_id: params.booking_id,
+      new_class_id: params.new_class_id,
+      old_class_id: booking.class_id,
+    },
+    preview,
+  });
+
+  const feeNote = fee > 0 ? ` A $${fee} late-cancellation fee will apply.` : "";
+  const summary = `Reschedule from ${oldCls.class_type} at ${oldStartsET} to ${newCls.class_type} at ${newStartsET}.${feeNote}`;
+
+  const result = success({
+    pending_action_id: actionId,
+    summary,
+    ...preview,
+  });
+  logTool("reschedule_class", "exit", result);
+  return result;
+}
+
 // --- lookup_bookings ---
 
 interface LookupBookingsParams {
@@ -506,6 +668,64 @@ export async function confirmAction(
     return result;
   }
 
+  if (action.action === "reschedule_class") {
+    const p = action.params as {
+      member_id: string;
+      booking_id: string;
+      new_class_id: string;
+    };
+    const preview = action.preview as {
+      cancel_status: "cancelled" | "late_cancelled";
+      fee_charged: number;
+    };
+
+    // Cancel the old booking
+    const { error: cancelErr } = await supabase
+      .from("bookings")
+      .update({
+        status: preview.cancel_status,
+        fee_charged: preview.fee_charged,
+        cancelled_at: getNow().toISOString(),
+      })
+      .eq("id", p.booking_id);
+
+    if (cancelErr) {
+      const result = fail(`Failed to cancel old booking: ${cancelErr.message}`);
+      logTool("confirm_action", "exit", result);
+      return result;
+    }
+
+    // Book the new class
+    const { data: newBooking, error: bookErr } = await supabase
+      .from("bookings")
+      .insert({
+        member_id: p.member_id,
+        class_id: p.new_class_id,
+        status: "booked",
+        fee_charged: 0,
+        credit_lost: false,
+        booked_at: getNow().toISOString(),
+        cancelled_at: null,
+      })
+      .select()
+      .single();
+
+    if (bookErr || !newBooking) {
+      const result = fail(`Old booking cancelled but failed to create new booking: ${bookErr?.message}`);
+      logTool("confirm_action", "exit", result);
+      return result;
+    }
+
+    const result = success({
+      confirmed: true,
+      old_booking_id: p.booking_id,
+      new_booking_id: newBooking.id,
+      ...action.preview,
+    });
+    logTool("confirm_action", "exit", result);
+    return result;
+  }
+
   const result = fail(`Unknown action type: ${action.action}`);
   logTool("confirm_action", "exit", result);
   return result;
@@ -513,7 +733,7 @@ export async function confirmAction(
 
 // --- Dispatcher ---
 
-const WRITE_TOOLS = new Set(["book_class", "cancel_class", "confirm_action"]);
+const WRITE_TOOLS = new Set(["book_class", "cancel_class", "reschedule_class", "confirm_action"]);
 
 export function isWriteTool(name: string): boolean {
   return WRITE_TOOLS.has(name);
@@ -530,6 +750,8 @@ export async function dispatchTool(
       return bookClass(input as unknown as BookParams);
     case "cancel_class":
       return cancelClass(input as unknown as CancelParams);
+    case "reschedule_class":
+      return rescheduleClass(input as unknown as RescheduleParams);
     case "lookup_bookings":
       return lookupBookings(input as unknown as LookupBookingsParams);
     case "lookup_membership":

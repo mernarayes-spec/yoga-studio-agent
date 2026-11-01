@@ -88,9 +88,28 @@ export const agentTools: ToolSchema[] = [
     },
   },
   {
+    name: "reschedule_class",
+    description:
+      "Prepare a reschedule for the current member: cancel an existing booking and book a different class in one step. Returns a preview (including any late-cancel fee) with a pending_action_id. The reschedule is NOT confirmed yet — present the details to the member and call confirm_action after they agree.",
+    input_schema: {
+      type: "object",
+      properties: {
+        booking_id: {
+          type: "string",
+          description: "UUID of the existing booking to cancel.",
+        },
+        new_class_id: {
+          type: "string",
+          description: "UUID of the new class to book instead.",
+        },
+      },
+      required: ["booking_id", "new_class_id"],
+    },
+  },
+  {
     name: "confirm_action",
     description:
-      "Execute a previously previewed action (book or cancel) after the member has confirmed. Pass the pending_action_id returned by book_class or cancel_class.",
+      "Execute a previously previewed action (book, cancel, or reschedule) after the member has confirmed. Pass the pending_action_id returned by book_class, cancel_class, or reschedule_class.",
     input_schema: {
       type: "object",
       properties: {
