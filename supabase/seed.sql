@@ -89,7 +89,7 @@ INSERT INTO classes (id, class_type, instructor, starts_at, capacity)
 VALUES (
   'c1000000-0000-0000-0000-000000000001',
   'Yoga Strength', 'Jordan',
-  now() + interval '5 hours',
+  date_trunc('hour', now() + interval '5 hours'),
   20
 )
 ON CONFLICT (id) DO UPDATE SET
@@ -112,7 +112,7 @@ INSERT INTO classes (id, class_type, instructor, starts_at, capacity)
 VALUES (
   'c1000000-0000-0000-0000-000000000002',
   'Yoga Strength', 'Suki',
-  now() + interval '15 hours',
+  date_trunc('hour', now() + interval '15 hours'),
   20
 )
 ON CONFLICT (id) DO UPDATE SET
@@ -135,7 +135,7 @@ INSERT INTO classes (id, class_type, instructor, starts_at, capacity)
 VALUES (
   'c1000000-0000-0000-0000-000000000003',
   'Hot Traditional Yoga', 'Leo',
-  now() - interval '2 days',
+  date_trunc('hour', now() - interval '2 days'),
   20
 )
 ON CONFLICT (id) DO UPDATE SET
@@ -173,7 +173,7 @@ INSERT INTO classes (id, class_type, instructor, starts_at, capacity)
 VALUES (
   'c1000000-0000-0000-0000-000000000004',
   'Yoga Sculpt', 'Maya',
-  now() + interval '10 hours',
+  date_trunc('hour', now() + interval '10 hours'),
   20
 )
 ON CONFLICT (id) DO UPDATE SET
