@@ -62,75 +62,50 @@ WHERE id = (
 -- Bookings
 -- ============================================================
 
--- Alice: 3 bookings for classes 2+ days out (day_offset=3 slots 0,1,2 → indices 24,25,26)
+-- Alice: 3 bookings spread across Nov 4 12 PM, Nov 6 6 AM, Nov 9 12 PM
+-- (day_offset=1 slot=1 → index 19, day_offset=3 slot=0 → index 24, day_offset=6 slot=1 → index 34)
 INSERT INTO bookings (id, member_id, class_id, status)
 VALUES
   ('b0000000-0000-0000-0000-000000000001',
    'a0000000-0000-0000-0000-000000000001',
-   'c0000000-0000-0000-0000-000000000024',
+   'c0000000-0000-0000-0000-000000000019',
    'booked'),
   ('b0000000-0000-0000-0000-000000000002',
    'a0000000-0000-0000-0000-000000000001',
-   'c0000000-0000-0000-0000-000000000025',
+   'c0000000-0000-0000-0000-000000000024',
    'booked'),
   ('b0000000-0000-0000-0000-000000000003',
    'a0000000-0000-0000-0000-000000000001',
-   'c0000000-0000-0000-0000-000000000026',
+   'c0000000-0000-0000-0000-000000000034',
    'booked')
 ON CONFLICT (id) DO UPDATE SET
   member_id = EXCLUDED.member_id,
   class_id = EXCLUDED.class_id,
   status = EXCLUDED.status;
 
--- Bob: 1 booking for a class ~5 hours from now (inside 10-hr window)
--- We find the nearest future class and create an explicit one instead.
--- Use a class whose starts_at is now() + 5 hours.
-INSERT INTO classes (id, class_type, instructor, starts_at, capacity)
-VALUES (
-  'c1000000-0000-0000-0000-000000000001',
-  'Yoga Strength', 'Jordan',
-  date_trunc('hour', now() + interval '5 hours'),
-  20
-)
-ON CONFLICT (id) DO UPDATE SET
-  starts_at = EXCLUDED.starts_at;
-
+-- Bob: 3 bookings spread across Nov 5 6 AM, Nov 7 6 PM, Nov 10 12 PM
+-- (day_offset=2 slot=0 → index 21, day_offset=4 slot=2 → index 29, day_offset=7 slot=1 → index 37)
 INSERT INTO bookings (id, member_id, class_id, status)
-VALUES (
-  'b0000000-0000-0000-0000-000000000004',
-  'a0000000-0000-0000-0000-000000000002',
-  'c1000000-0000-0000-0000-000000000001',
-  'booked'
-)
+VALUES
+  ('b0000000-0000-0000-0000-000000000004',
+   'a0000000-0000-0000-0000-000000000002',
+   'c0000000-0000-0000-0000-000000000021',
+   'booked'),
+  ('b0000000-0000-0000-0000-000000000005',
+   'a0000000-0000-0000-0000-000000000002',
+   'c0000000-0000-0000-0000-000000000029',
+   'booked'),
+  ('b0000000-0000-0000-0000-000000000008',
+   'a0000000-0000-0000-0000-000000000002',
+   'c0000000-0000-0000-0000-000000000037',
+   'booked')
 ON CONFLICT (id) DO UPDATE SET
   member_id = EXCLUDED.member_id,
   class_id = EXCLUDED.class_id,
   status = EXCLUDED.status;
 
--- Bob: 1 booking for a class ~15 hours from now (outside 10-hr window, safe cancel)
-INSERT INTO classes (id, class_type, instructor, starts_at, capacity)
-VALUES (
-  'c1000000-0000-0000-0000-000000000002',
-  'Yoga Strength', 'Suki',
-  date_trunc('hour', now() + interval '15 hours'),
-  20
-)
-ON CONFLICT (id) DO UPDATE SET
-  starts_at = EXCLUDED.starts_at;
-
-INSERT INTO bookings (id, member_id, class_id, status)
-VALUES (
-  'b0000000-0000-0000-0000-000000000005',
-  'a0000000-0000-0000-0000-000000000002',
-  'c1000000-0000-0000-0000-000000000002',
-  'booked'
-)
-ON CONFLICT (id) DO UPDATE SET
-  member_id = EXCLUDED.member_id,
-  class_id = EXCLUDED.class_id,
-  status = EXCLUDED.status;
-
--- Carol: 1 past no-show booking
+-- Carol: 1 past no-show + 2 future bookings on Nov 5 6 PM, Nov 8 12 PM
+-- (past no-show kept as custom class, future: day_offset=2 slot=2 → index 23, day_offset=5 slot=1 → index 31)
 INSERT INTO classes (id, class_type, instructor, starts_at, capacity)
 VALUES (
   'c1000000-0000-0000-0000-000000000003',
@@ -142,18 +117,48 @@ ON CONFLICT (id) DO UPDATE SET
   starts_at = EXCLUDED.starts_at;
 
 INSERT INTO bookings (id, member_id, class_id, status, fee_charged)
-VALUES (
-  'b0000000-0000-0000-0000-000000000006',
-  'a0000000-0000-0000-0000-000000000003',
-  'c1000000-0000-0000-0000-000000000003',
-  'no_show',
-  25
-)
+VALUES
+  ('b0000000-0000-0000-0000-000000000006',
+   'a0000000-0000-0000-0000-000000000003',
+   'c1000000-0000-0000-0000-000000000003',
+   'no_show',
+   25),
+  ('b0000000-0000-0000-0000-000000000009',
+   'a0000000-0000-0000-0000-000000000003',
+   'c0000000-0000-0000-0000-000000000023',
+   'booked',
+   0),
+  ('b0000000-0000-0000-0000-000000000010',
+   'a0000000-0000-0000-0000-000000000003',
+   'c0000000-0000-0000-0000-000000000031',
+   'booked',
+   0)
 ON CONFLICT (id) DO UPDATE SET
   member_id = EXCLUDED.member_id,
   class_id = EXCLUDED.class_id,
   status = EXCLUDED.status,
   fee_charged = EXCLUDED.fee_charged;
+
+-- Frank: 3 bookings on Nov 4 6 PM, Nov 7 6 AM, Nov 9 6 AM
+-- (day_offset=1 slot=2 → index 20, day_offset=4 slot=0 → index 27, day_offset=6 slot=0 → index 33)
+INSERT INTO bookings (id, member_id, class_id, status)
+VALUES
+  ('b0000000-0000-0000-0000-000000000011',
+   'a0000000-0000-0000-0000-000000000006',
+   'c0000000-0000-0000-0000-000000000020',
+   'booked'),
+  ('b0000000-0000-0000-0000-000000000012',
+   'a0000000-0000-0000-0000-000000000006',
+   'c0000000-0000-0000-0000-000000000027',
+   'booked'),
+  ('b0000000-0000-0000-0000-000000000013',
+   'a0000000-0000-0000-0000-000000000006',
+   'c0000000-0000-0000-0000-000000000033',
+   'booked')
+ON CONFLICT (id) DO UPDATE SET
+  member_id = EXCLUDED.member_id,
+  class_id = EXCLUDED.class_id,
+  status = EXCLUDED.status;
 
 -- Capacity-1 class: book it so it's full (Alice books it)
 INSERT INTO bookings (id, member_id, class_id, status)
@@ -161,29 +166,6 @@ VALUES (
   'b0000000-0000-0000-0000-000000000007',
   'a0000000-0000-0000-0000-000000000001',
   'c0000000-0000-0000-0000-000000000018',
-  'booked'
-)
-ON CONFLICT (id) DO UPDATE SET
-  member_id = EXCLUDED.member_id,
-  class_id = EXCLUDED.class_id,
-  status = EXCLUDED.status;
-
--- Booking exactly at the 10-hour cutoff boundary
-INSERT INTO classes (id, class_type, instructor, starts_at, capacity)
-VALUES (
-  'c1000000-0000-0000-0000-000000000004',
-  'Yoga Sculpt', 'Maya',
-  date_trunc('hour', now() + interval '10 hours'),
-  20
-)
-ON CONFLICT (id) DO UPDATE SET
-  starts_at = EXCLUDED.starts_at;
-
-INSERT INTO bookings (id, member_id, class_id, status)
-VALUES (
-  'b0000000-0000-0000-0000-000000000008',
-  'a0000000-0000-0000-0000-000000000002',
-  'c1000000-0000-0000-0000-000000000004',
   'booked'
 )
 ON CONFLICT (id) DO UPDATE SET
