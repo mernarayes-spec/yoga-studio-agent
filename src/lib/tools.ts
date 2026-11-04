@@ -2,6 +2,7 @@ import { supabase } from "./supabase";
 import { getNow, toET } from "./time";
 import { CANCEL_WINDOW_HOURS, LATE_CANCEL_FEE } from "../config";
 import { randomUUID } from "crypto";
+import { sendBookingConfirmation } from "./email";
 
 // --- Result types ---
 
@@ -218,6 +219,7 @@ export async function bookClass(
     class_type: cls.class_type,
     instructor: cls.instructor,
     starts_at: startsET,
+    member_name: member.name,
   };
   pendingActions.set(actionId, {
     id: actionId,
@@ -631,6 +633,16 @@ export async function confirmAction(
       logTool("confirm_action", "exit", result);
       return result;
     }
+
+    // Send confirmation email (fire-and-forget — never blocks the booking)
+    await sendBookingConfirmation({
+      memberName: action.preview.member_name,
+      classType: action.preview.class_type,
+      instructor: action.preview.instructor,
+      startsAt: action.preview.starts_at,
+      memberId: p.member_id,
+      classId: p.class_id,
+    });
 
     const result = success({
       confirmed: true,
