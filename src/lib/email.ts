@@ -1,5 +1,4 @@
 import { Resend } from "resend";
-import { toET } from "./time";
 import { CANCEL_WINDOW_HOURS, LATE_CANCEL_FEE } from "../config";
 
 /** Module-level client — created once, reused across calls. */
@@ -9,7 +8,7 @@ interface BookingEmailParams {
   memberName: string;
   classType: string;
   instructor: string;
-  startsAt: string; // ISO-8601 UTC
+  startsAt: string; // pre-formatted ET string from preview
   memberId: string;
   classId: string;
 }
@@ -35,25 +34,24 @@ export async function sendBookingConfirmation(params: BookingEmailParams): Promi
     return;
   }
 
-  const formattedTime = toET(startsAt);
-
   const html = `
-    <h2>You're booked, ${memberName}!</h2>
-    <p><strong>${classType}</strong> with ${instructor}<br/>
-    ${formattedTime}</p>
-    <hr/>
-    <p style="color: #666; font-size: 14px;">
-      Need to cancel? You can cancel for free up to <strong>${CANCEL_WINDOW_HOURS} hours</strong>
-      before class. Cancellations within ${CANCEL_WINDOW_HOURS} hours incur a
-      <strong>$${LATE_CANCEL_FEE}</strong> late-cancel fee.
-    </p>
+    <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+      <h2 style="margin-bottom: 4px;">You're booked, ${memberName}!</h2>
+      <p><strong>${classType}</strong> with ${instructor}<br/>
+      ${startsAt}</p>
+      <div style="background-color: #f97316; color: white; padding: 16px 20px; border-radius: 8px; margin-top: 24px; font-size: 14px;">
+        <strong>Cancellation policy:</strong> You can cancel for free up to ${CANCEL_WINDOW_HOURS} hours
+        before class. Cancellations within ${CANCEL_WINDOW_HOURS} hours incur a
+        $${LATE_CANCEL_FEE} late-cancel fee.
+      </div>
+    </div>
   `;
 
   try {
     await resend.emails.send({
       from: "Demo Studio <onboarding@resend.dev>",
       to,
-      subject: `Booking confirmed: ${classType} — ${formattedTime}`,
+      subject: `Booking confirmed: ${classType} — ${startsAt}`,
       html,
     });
 
