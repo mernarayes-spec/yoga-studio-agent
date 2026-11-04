@@ -636,10 +636,10 @@ export async function confirmAction(
 
     // Send confirmation email (fire-and-forget — never blocks the booking)
     await sendBookingConfirmation({
-      memberName: action.preview.member_name,
-      classType: action.preview.class_type,
-      instructor: action.preview.instructor,
-      startsAt: action.preview.starts_at,
+      memberName: action.preview.member_name as string,
+      classType: action.preview.class_type as string,
+      instructor: action.preview.instructor as string,
+      startsAt: action.preview.starts_at as string,
       memberId: p.member_id,
       classId: p.class_id,
     });
